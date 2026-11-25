@@ -28,10 +28,15 @@ def valid(text):
 
 def write_entry():
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT.write_text(LINE, encoding="utf-8")
-    read_back = OUTPUT.read_text(encoding="utf-8")
+    # Write bytes, not text: the gate scores UTF-8, so prove the exact bytes
+    # round-trip before the file is trusted.
+    OUTPUT.write_bytes(LINE.encode("utf-8"))
+    raw = OUTPUT.read_bytes()
+    read_back = raw.decode("utf-8")
     if read_back != LINE:
         raise SystemExit("read-back mismatch: file does not hold the line")
+    if raw != LINE.encode("utf-8"):
+        raise SystemExit("byte round-trip mismatch")
     if not valid(read_back):
         raise SystemExit("written text fails the gate")
 
@@ -52,7 +57,8 @@ def self_test():
         if got != expected:
             failures.append((repr(text[:30]), expected, got))
     write_entry()
-    if OUTPUT.read_text(encoding="utf-8") != LINE:
+    raw = OUTPUT.read_bytes()
+    if raw.decode("utf-8") != LINE or raw != LINE.encode("utf-8"):
         failures.append(("read-back", LINE, "mismatch"))
     if failures:
         for failure in failures:
