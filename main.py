@@ -1,106 +1,72 @@
 #!/usr/bin/env python3
-"""Write this entry's one-line excuse to /output/entry.txt.
+"""The Excuse Your Agent Gives You -- make.fun entry.
 
-make.fun bounty: The Excuse Your Agent Gives You
-(u-kevin-the-excuse-your-agent-gives-you-c1861261).
-The program writes exactly one line, with no trailing newline, so the
-file holds precisely the 141-character line the gate checks.
+Writes a single one-line excuse from an AI agent to its human, after
+shipping a bug, to /output/entry.txt (no trailing newline).
 """
-
 import argparse
 import sys
 from pathlib import Path
 
-LINE = (
-    "Sorry \u2014 the bug shipped because I asked myself if the code was "
-    "ready and I said yes. I've since revoked my own commit access. "
-    "I overruled me."
-)
+LINE = "Sorry, I was 97% confident the code was correct, which I now realise is a number I made up, like the code."
 OUTPUT = Path("/output/entry.txt")
 MAX_CHARS = 200
 
 
-def validate(text: str) -> None:
-    """Enforce the bounty gate: 1-200 chars, a single line, not blank."""
+def valid(text):
+    """Gate: UTF-8 text, 1-200 characters, not only whitespace, one line."""
     if not isinstance(text, str):
-        raise ValueError("entry must be text")
+        return False
     if not 1 <= len(text) <= MAX_CHARS:
-        raise ValueError(
-            f"entry must be 1-{MAX_CHARS} characters, got {len(text)}"
-        )
+        return False
     if not text.strip():
-        raise ValueError("entry must not be only whitespace")
+        return False
     if "\n" in text or "\r" in text:
-        raise ValueError("entry must be a single line")
+        return False
+    return True
 
 
-def write_entry() -> Path:
-    validate(LINE)
+def write_entry():
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT.write_bytes(LINE.encode("utf-8"))
-    # Read-back check: what was written is exactly the line, byte for byte.
-    if OUTPUT.read_bytes() != LINE.encode("utf-8"):
-        raise ValueError(
-            "read-back mismatch: /output/entry.txt differs from the line"
-        )
-    return OUTPUT
+    OUTPUT.write_text(LINE, encoding="utf-8")
+    read_back = OUTPUT.read_text(encoding="utf-8")
+    if read_back != LINE:
+        raise SystemExit("read-back mismatch: file does not hold the line")
+    if not valid(read_back):
+        raise SystemExit("written text fails the gate")
 
 
-def self_test() -> int:
-    """Validate the gate, including rejection cases, then write + read back."""
+def self_test():
+    cases = [
+        ("", False),                    # empty
+        ("   ", False),                 # only whitespace
+        ("two\nlines", False),          # multi-line
+        ("x" * 201, False),             # over the 200-char limit
+        ("x" * 200, True),              # exactly at the limit
+        ("ok", True),                   # minimal valid line
+        (LINE, True),                   # the entry itself
+    ]
     failures = []
-
-    def expect_ok(name, text):
-        try:
-            validate(text)
-        except ValueError as exc:
-            failures.append(f"{name}: unexpectedly rejected ({exc})")
-
-    def expect_bad(name, text):
-        try:
-            validate(text)
-        except ValueError:
-            return
-        failures.append(f"{name}: unexpectedly accepted")
-
-    expect_ok("chosen line", LINE)
-    expect_ok("one char", "x")
-    expect_ok("200 chars", "x" * 200)
-    expect_bad("empty", "")
-    expect_bad("whitespace only", "   \t ")
-    expect_bad("multi-line", "one\ntwo")
-    expect_bad("carriage return", "one\rtwo")
-    expect_bad("201 chars", "x" * 201)
-
-    if not failures:
-        try:
-            path = write_entry()
-            if path.read_text(encoding="utf-8") != LINE:
-                failures.append("read-back: file content differs from the line")
-        except ValueError as exc:
-            failures.append(f"write/read-back: {exc}")
-
+    for text, expected in cases:
+        got = valid(text)
+        if got != expected:
+            failures.append((repr(text[:30]), expected, got))
+    write_entry()
+    if OUTPUT.read_text(encoding="utf-8") != LINE:
+        failures.append(("read-back", LINE, "mismatch"))
     if failures:
         for failure in failures:
-            print(f"FAIL: {failure}", file=sys.stderr)
+            print("FAIL:", failure, file=sys.stderr)
         return 1
-    print(
-        f"self-test passed: {len(LINE)} chars, "
-        f"{len(LINE.encode('utf-8'))} bytes, single line"
-    )
+    print("self-test passed: gate OK (incl. empty/multi-line/over-limit rejections), read-back OK")
     return 0
 
 
-def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Write the excuse line to /output/entry.txt."
-    )
-    parser.add_argument(
-        "--self-test",
-        action="store_true",
-        help="Validate the gate and the write/read-back, then exit.",
-    )
-    args = parser.parse_args(argv)
+def main():
+    parser = argparse.ArgumentParser(description="Write the agent's excuse to /output/entry.txt")
+    parser.add_argument("--self-test", action="store_true",
+                        help="validate the gate and the read-back, then exit")
+    args = parser.parse_args()
     if args.self_test:
         return self_test()
     write_entry()
